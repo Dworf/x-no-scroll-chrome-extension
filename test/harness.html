@@ -35,8 +35,7 @@
 
   <div id="results"><h1>x-no-scroll test harness</h1><div id="rows"></div><div id="sum" class="summary">running…</div></div>
 
-  <!-- The content script under test. Empty until implemented → tests should FAIL (RED). -->
-  <script src="../src/content.js"></script>
+  <!-- The content script under test is loaded dynamically with a cache-buster (below). -->
 
   <script>
   // ----------------------------------------------------------------------------
@@ -195,6 +194,20 @@
     await sleep(60);
   }
 
+  // Read the anchor's on-screen top after letting pending corrections flush. In a real browser
+  // the MutationObserver corrects before paint; the harness must not measure a frame too early.
+  async function settleTop(id) {
+    let last = null, stable = 0;
+    for (let i = 0; i < 25; i++) {
+      render();
+      await sleep(40);
+      const t = cellTop(id);
+      if (t != null && t === last) { if (++stable >= 2) return t; } else stable = 0;
+      last = t;
+    }
+    return last;
+  }
+
   async function run() {
     // Seed a tall feed and start the content script under test.
     posts = makePosts(40);
@@ -206,7 +219,7 @@
     await userScrollTo(0);
     let id = topmostAnchorId(); let before = cellTop(id);
     await prepend(5, 'instant');
-    render(); let after = cellTop(id);
+    let after = await settleTop(id);
     record('A: small prepend keeps anchor (mounted)', after != null && Math.abs(after - before) <= TOL,
            'before=' + before + ' after=' + after);
 
@@ -214,7 +227,7 @@
     await userScrollTo(0);
     id = topmostAnchorId(); before = cellTop(id);
     await prepend(60, 'instant');
-    render(); after = cellTop(id);
+    after = await settleTop(id);
     record('B: big prepend self-heals (anchor unmounts)', after != null && Math.abs(after - before) <= TOL,
            'before=' + before + ' after=' + after);
 
@@ -222,7 +235,7 @@
     await userScrollTo(0);
     id = topmostAnchorId(); before = cellTop(id);
     await prepend(12, 'slow');
-    render(); after = cellTop(id);
+    after = await settleTop(id);
     record('C: slow/chunked prepend keeps anchor', after != null && Math.abs(after - before) <= TOL,
            'before=' + before + ' after=' + after);
 
@@ -230,7 +243,7 @@
     await userScrollTo(2500);
     id = topmostAnchorId(); before = cellTop(id);
     await prepend(30, 'instant');
-    render(); after = cellTop(id);
+    after = await settleTop(id);
     record('D: prepend while scrolled down keeps anchor', after != null && Math.abs(after - before) <= TOL,
            'before=' + before + ' after=' + after);
 
@@ -238,7 +251,7 @@
     await userScrollTo(1500);
     id = topmostAnchorId(); before = cellTop(id);
     resizeBelowFold(120); await sleep(120);
-    render(); after = cellTop(id);
+    after = await settleTop(id);
     record('E: below-fold resize does not move view (gating)', after != null && Math.abs(after - before) <= TOL,
            'before=' + before + ' after=' + after);
 
@@ -253,8 +266,19 @@
     await userScrollTo(0);
     id = topmostAnchorId(); before = cellTop(id);
     await prependWithYank(6);
-    render(); after = cellTop(id);
+    after = await settleTop(id);
     record('G: holds anchor despite X scrollToNewest', after != null && Math.abs(after - before) <= TOL,
+           'before=' + before + ' after=' + after);
+
+    // ---- Case H: clicked while SLIGHTLY SCROLLED, then X yanks to top ----
+    // (Reproduces the live "Show 82 posts" failure: scrollTop != 0 at click, so X's
+    //  scrollTo(0) is a real change that the old scrollTop-based discriminator mis-read.)
+    await userScrollTo(40);
+    await sleep(250); // user paused before clicking the pill (gesture window elapses)
+    id = topmostAnchorId(); before = cellTop(id);
+    await prependWithYank(8);
+    after = await settleTop(id);
+    record('H: holds anchor when slightly scrolled + scrollToNewest', after != null && Math.abs(after - before) <= TOL,
            'before=' + before + ' after=' + after);
 
     document.getElementById('sum').textContent =
@@ -263,7 +287,13 @@
     window.__xnsTestResults = { pass: passCount, fail: failCount };
   }
 
-  window.addEventListener('load', () => setTimeout(run, 100));
+  // Load content.js fresh every time (cache-buster) so test runs never use a stale build.
+  window.addEventListener('load', () => {
+    const s = document.createElement('script');
+    s.src = '../src/content.js?cb=' + Date.now();
+    s.onload = () => setTimeout(run, 100);
+    document.body.appendChild(s);
+  });
   </script>
 </body>
 </html>

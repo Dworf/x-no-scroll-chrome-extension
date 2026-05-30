@@ -1,13 +1,17 @@
 # X No-Scroll — keep your place
 
 A tiny Chrome extension that **keeps your scroll position fixed** when X (Twitter) loads new
-posts above your current view — when you click the **"Show N posts"** pill at the top, an inline
-**"Show more posts"** gap button, or any background load.
+posts above your current view — for example when you click the **"Show N posts"** / **"See new
+posts"** pill at the top of the home timeline.
 
-Normally those loads insert posts *above* you and leave your scroll position untouched, so the
-content you were reading slides down and you lose your place. This extension re-pins it: the post
-you were looking at stays exactly where it is, and the new posts appear above it (scroll up to read
-them) — works whether you're reading up the feed or scrolling down through it.
+When you click that pill, X loads the new posts **and scrolls you up to the newest one** (its
+`scrollToNewest`), so the post you were reading jumps away and you lose your place. This extension
+stops that: the post you were looking at stays put, and the new posts appear *above* it (scroll up
+to read them) — whether you're working up the feed or scrolling down through it.
+
+It also covers the inline **"Show more posts"** gap button and other click-triggered loads. It
+matches **no button text** — any click briefly "arms" it, and it only acts if posts actually load —
+so it works in any language and isn't fragile to X's UI changes.
 
 ## Install (load unpacked)
 
@@ -25,45 +29,79 @@ Two things make you lose your place when a pill loads posts (both verified by in
 1. X's timeline is a *virtualized* list — posts are absolutely-positioned cells
    (`transform: translateY(...)`) inside a fixed-height container, and off-screen posts are
    unmounted — which defeats the browser's native scroll anchoring.
-2. More importantly, X **deliberately scrolls you to the top**: clicking a pill calls X's
-   `scrollToNewest()` → `window.scrollTo(0)` + `window.scrollBy(...)`.
+2. More importantly, X **deliberately scrolls you to the top**: clicking the top "Show N posts" /
+   "See new posts" pill calls X's `scrollToNewest()` → `window.scrollTo(0)` + `window.scrollBy(...)`.
 
-`src/content.js` handles both:
+`src/content.js` is **event-driven and passive by default** — it does nothing while you read,
+scroll, or drag the scrollbar, so it can never cause a stray jump. It acts only in a short window
+after a click:
 
-- Tracks an **anchor** — the topmost in-view post (its status id + on-screen offset) — updated only
-  while *you* scroll.
-- On every DOM insertion, inside a `MutationObserver` callback (which runs **before the browser
-  paints**, so there's no flicker and no timers):
-  - if the anchor is still mounted, it nudges `scrollTop` so the anchor returns to its exact spot;
-  - if a large prepend pushed the anchor out of the render window, it scrolls by the height the feed
-    grew (the anchor then re-mounts near the top and precise tracking resumes).
-  - We move via `element.scrollTop`; X moves via `window.scrollTo`/`scrollBy` — a clean seam.
-- Right after a correction it opens a short **defend window** during which X's
-  `window.scrollTo`/`scrollBy` (its scroll-to-newest) are suppressed, so X can't undo us. This is why
-  the extension runs in the page's **MAIN world** (see `manifest.json`) — an isolated content script
-  can't override the `window.scrollTo` that X's own code calls.
-- Any real user gesture (wheel / touch / nav keys) ends the defend window and re-anchors, so it
-  never fights your own scrolling.
-- It re-pins on **every** mutation, so fast, slow, and chunked loads all behave identically.
+1. **On any click**, it remembers the **anchor** — the topmost in-view post (status id + on-screen
+   offset) — and arms for a few seconds.
+2. **If a load arrives while armed**, a `MutationObserver` restores the anchor to exactly where it
+   was (re-pinning across chunked loads), and X's `window.scrollTo` / `window.scrollBy` (its
+   scroll-to-newest) are suppressed so X can't undo it. We move via `element.scrollTop` while X moves
+   via `window.scrollTo`/`scrollBy` — a clean seam, so our scroll and X's never get confused. If a big
+   prepend unmounts the anchor, it restores by the height the feed grew (an absolute target, correct
+   even after X has already scrolled the page).
+3. **If you scroll yourself** while armed, it disarms — you've moved on.
 
-No buttons are hooked and no text is matched, so it's resilient to X's redesigns and works in any
-language.
+Because it intercepts X's own scroll call, the extension runs in the page's **MAIN world** (see
+`manifest.json`); an isolated content script can't override the `window.scrollTo` that X's code calls.
 
 ## Testing
 
 `test/harness.html` is an offline mock of X's virtualized timeline (window-scroll, `cellInnerDiv`
-cells with `translateY`, off-screen unmounting). It runs automated assertions for small/large/slow
-prepends, anchor-unmount self-heal, below-fold gating, and "doesn't fight normal scrolling".
+cells with `translateY`, off-screen unmounting, and a simulated `scrollToNewest`). It runs automated
+assertions for: small/large/slow prepends, anchor-unmount self-heal, below-fold gating, surviving
+`scrollToNewest` (including **while slightly scrolled**), **passivity with no click** (scrollbar drag
+must not jump), and **disarming** when you scroll after a click.
 
 ```sh
 # from this folder
 python3 -m http.server 8753
-# then open http://localhost:8753/test/harness.html — the panel shows pass/fail
+# then open http://localhost:8753/test/harness.html in a FOCUSED window — the panel shows pass/fail.
+# (Run it in a foreground tab; background tabs throttle timers and skew the timing-sensitive cases.)
 ```
 
 ## Scope
 
 Home timeline only (`x.com/home`, `twitter.com/home`). Always on; no UI.
+
+## Versions
+
+### v0.1.0 — first release
+- Keeps your place when X loads new posts above you ("Show N posts" / "See new posts" / inline
+  "Show more posts").
+- **Event-driven and passive by default:** only acts in a short window after a click, so normal
+  reading, scrolling, and scrollbar dragging are never touched.
+- Suppresses X's `scrollToNewest` and restores your anchored post — precise when the post stays
+  rendered, with a self-heal restore for big/chunked loads that virtualize it away.
+- Runs in the page MAIN world; home timeline only; no UI, no settings, **no data collected**.
+- Offline test harness (`test/harness.html`) covering prepends, self-heal, gating, passivity,
+  disarming, and `scrollToNewest`.
+
+## Contributing
+
+Contributions and bug reports are welcome. It's a small, single-file extension with **no build
+step** — the whole engine is `src/content.js` (dependency-free vanilla JS).
+
+- Before changing behavior, run the offline test harness (`test/harness.html`) in a **focused**
+  browser tab and keep it green — see [Testing](#testing).
+- Found a case where it loses your place or fights your scrolling? Open an issue with the steps:
+  which button you clicked and roughly where you were scrolled.
+- For larger changes, please open an issue to discuss first.
+
+## Acknowledgements
+
+- Built as a [Manifest V3](https://developer.chrome.com/docs/extensions/develop) content script for
+  **Google Chrome**.
+- Operates on the **X** (formerly Twitter) web app.
+- No third-party libraries — plain vanilla JavaScript.
+
+**Not affiliated with, endorsed by, or sponsored by X Corp or Google LLC.** "X" and "Twitter" are
+trademarks of X Corp; "Google Chrome" is a trademark of Google LLC. This is an independent,
+unofficial project.
 
 ## License
 

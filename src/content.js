@@ -1,40 +1,32 @@
-// x-no-scroll — keeps your scroll position fixed when X/Twitter inserts posts above you.
+// x-no-scroll — keeps your scroll position fixed when X/Twitter loads new posts above you.
 //
-// WHAT X DOES (verified live, 2026-05-29):
-//   X's home timeline is a virtualized list: posts are absolutely-positioned
-//   [data-testid="cellInnerDiv"] cells (transform: translateY(...)) inside a fixed-height
-//   container, and off-screen cells are unmounted. When you click a "Show N posts" /
-//   "Show more posts" pill, X PREPENDS the posts above you AND calls scrollToNewest()
-//   -> window.scrollTo(0) + window.scrollBy(...), deliberately yanking you to the top.
-//   That scroll-to-newest is the main thing that makes you lose your place.
+// WHAT X DOES (verified live):
+//   When you click a "Show N posts" / "See new posts" / "Show more posts" button, X loads the
+//   new posts above you AND calls scrollToNewest() -> window.scrollTo(0) + window.scrollBy(...),
+//   deliberately yanking you to the top. That scroll-to-newest is what makes you lose your place.
 //
-// HOW WE FIX IT:
-//   1. Track an ANCHOR = the topmost in-view tweet (status id + on-screen offset + the
-//      scrollTop/scrollHeight at capture), updated ONLY on a real user gesture.
-//   2. On every DOM mutation (MutationObserver, before paint -> no flicker/timers), if the
-//      feed GREW (content inserted) — or we're mid-load — hold the anchor:
-//        - anchor still mounted -> scrollTop += (rect.top - savedTop)        (precise)
-//        - anchor unmounted     -> scrollTop  = base + (scrollHeight growth) (self-heal,
-//          an ABSOLUTE target so it's correct even after X already scrolled away)
-//      We never use "scrollTop changed" to detect a user scroll, because X changes scrollTop
-//      too; content insertion is detected by scrollHeight growth instead.
-//   3. When we make a correction we open a short "defend window" during which X's
-//      window.scrollTo / window.scrollBy (its scroll-to-newest) are suppressed, so X can't
-//      undo us. (Requires running in the page's MAIN world — see manifest.)
-//   4. Any real user gesture (wheel / touch / nav keys) ends the defend window and re-anchors,
-//      so we never fight the user. Timers (not rAF) are used so it works in background tabs.
-//
-// See test/harness.html for the executable spec.
+// DESIGN — event-driven and passive by default:
+//   The extension does NOTHING during normal use (reading, wheel, scrollbar, keyboard), so it can
+//   never cause a stray jump. It only acts in a short window AFTER A CLICK:
+//     1. On any click, remember the anchor = the topmost in-view tweet (status id + on-screen
+//        offset) and "arm" for a few seconds.
+//     2. If a load arrives while armed, suppress X's scroll-to-newest (window.scrollTo/scrollBy)
+//        and restore the anchor to exactly where it was. Re-pin across chunked loads.
+//     3. If you scroll yourself while armed (before the load), it disarms — you've moved on.
+//   Restores use element.scrollTop (X uses window.scrollTo/scrollBy) — a clean seam, so our scroll
+//   and X's scroll never get confused.
 
 (function () {
   'use strict';
 
   var CELL = '[data-testid="cellInnerDiv"]';
-  var HEADER_OFFSET = 56;   // sticky top bar; "in view" means below this
-  var DEFEND_MS = 1000;     // suppress X's scroll-to-newest for this long after a correction
+  var HEADER_OFFSET = 56;
+  var ARM_MS = 12000;   // after a click, watch for X to load posts for this long
+  var DEFEND_MS = 1500; // while restoring, suppress X's scroll-to-newest this long after each fix
 
   function scrollEl() { return document.scrollingElement || document.documentElement; }
   function nowMs() { return Date.now(); }
+  function onHome() { return window.__xnsTest === true || location.pathname === '/home'; }
 
   function statusIdOf(cell) {
     var a = cell.querySelector('a[href*="/status/"]');
@@ -49,8 +41,11 @@
   }
 
   // ---- state ----
-  var anchor = null;          // { id, savedTop, baseScrollTop, baseScrollHeight }
-  var defendUntil = 0;
+  var anchor = null;          // captured at click: { id, savedTop, baseScrollTop, baseScrollHeight }
+  var armedUntil = 0;         // a click happened; a load may follow
+  var defendUntil = 0;        // actively restoring; block X's scroll-to-newest
+  var selfScrollUntil = 0;    // we just set scrollTop (ignore the resulting scroll event)
+  var xScrollUntil = 0;       // X just scrolled programmatically (ignore it too)
   var lastScrollHeight = 0;
   var container = null;
   var cellObserver = null;
@@ -58,6 +53,7 @@
   var reattachQueued = false;
   var started = false;
 
+  function isArmed() { return nowMs() < armedUntil; }
   function inDefend() { return nowMs() < defendUntil; }
 
   function pickAnchor() {
@@ -85,42 +81,51 @@
     return null;
   }
 
+  // A click might be a "Show posts" pill — remember where we are so we can restore after the load.
+  function onClick() {
+    if (!onHome()) return;
+    var a = pickAnchor();
+    if (a) { anchor = a; armedUntil = nowMs() + ARM_MS; }
+  }
+
+  // If you scroll yourself while armed-and-waiting (scrollbar / wheel / keys), you've moved on —
+  // disarm so a later load doesn't snap you back. (Our restores and X's scrolls are flagged and
+  // ignored here, so they never look like a user scroll.)
+  function onScroll() {
+    if (!isArmed() && !inDefend()) return;
+    var t = nowMs();
+    if (t < selfScrollUntil || t < xScrollUntil) return; // our restore, or X's scroll — not the user
+    armedUntil = 0;
+    defendUntil = 0;
+    anchor = null;
+  }
+
   function applyScrollTo(target) {
+    selfScrollUntil = nowMs() + 150;
     var se = scrollEl();
     se.scrollTop = target;
-    // Re-baseline so chunked loads accumulate correctly and a later self-heal stays exact.
     anchor.baseScrollTop = se.scrollTop;
     anchor.baseScrollHeight = lastScrollHeight;
-    defendUntil = nowMs() + DEFEND_MS; // suppress X's scroll-to-newest that follows
+    defendUntil = nowMs() + DEFEND_MS;
   }
 
-  // A real user gesture overrides everything: stop defending, re-anchor to where they are.
-  function onUserGesture() {
-    defendUntil = 0;
-    var a = pickAnchor();
-    if (a) anchor = a;
-  }
-
-  // Runs inside the MutationObserver callback (before paint).
+  // Active only while armed/defending after a click; otherwise fully passive.
   function compensate() {
     var se = scrollEl();
     var sh = se.scrollHeight;
     var growth = sh - lastScrollHeight;
     lastScrollHeight = sh;
 
-    if (!anchor) { anchor = pickAnchor(); return; }
+    if (!anchor || !onHome() || (!isArmed() && !inDefend())) return;
 
-    // Only act on content insertion (scrollHeight grew) or while actively defending a load.
-    // A bare scrollTop change is NOT treated as a user scroll here — X changes scrollTop too;
-    // genuine user scrolls re-anchor via onUserGesture.
     if (growth > 0 || inDefend()) {
       var cell = findCellById(anchor.id);
       if (cell) {
         var delta = cell.getBoundingClientRect().top - anchor.savedTop;
         if (Math.abs(delta) > 0.5) applyScrollTo(se.scrollTop + delta);
       } else if (growth > 0) {
-        // Anchor virtualized away by a large prepend. Absolute restore: put the anchor back
-        // where it was even if X has since scrolled the page.
+        // Anchor virtualized away by a large prepend. Absolute restore (correct even after X
+        // has already scrolled the page away).
         applyScrollTo(anchor.baseScrollTop + (sh - anchor.baseScrollHeight));
       }
     }
@@ -130,7 +135,6 @@
     if (cellObserver) cellObserver.disconnect();
     container = c;
     lastScrollHeight = scrollEl().scrollHeight;
-    anchor = pickAnchor();
     cellObserver = new MutationObserver(compensate);
     cellObserver.observe(container, { childList: true });
   }
@@ -146,28 +150,32 @@
     setTimeout(function () { reattachQueued = false; ensureAttached(); }, 0);
   }
 
-  // Intercept X's programmatic scroll-to-newest during the defend window.
+  // Suppress X's programmatic scroll-to-newest only while we're actively restoring (defend window).
   function installScrollGuards() {
     var natScrollTo = window.scrollTo.bind(window);
     var natScrollBy = window.scrollBy.bind(window);
-    window.scrollTo = function () { if (inDefend()) return; return natScrollTo.apply(window, arguments); };
-    window.scrollBy = function () { if (inDefend()) return; return natScrollBy.apply(window, arguments); };
+    window.scrollTo = function () { if (inDefend()) return; xScrollUntil = nowMs() + 150; return natScrollTo.apply(window, arguments); };
+    window.scrollBy = function () { if (inDefend()) return; xScrollUntil = nowMs() + 150; return natScrollBy.apply(window, arguments); };
   }
 
   function start() {
     if (started) return;
     started = true;
     installScrollGuards();
-    // Re-anchor ONLY on genuine user input (never on X's programmatic scrolls).
-    window.addEventListener('wheel', onUserGesture, { passive: true });
-    window.addEventListener('touchmove', onUserGesture, { passive: true });
-    window.addEventListener('keydown', function (e) {
-      if (e.key && /^(Arrow|Page|Home|End| |Spacebar)/.test(e.key)) onUserGesture();
-    }, true);
+    document.addEventListener('click', onClick, true);
+    window.addEventListener('scroll', onScroll, { passive: true });
     ensureAttached();
     if (bodyObserver) bodyObserver.disconnect();
     bodyObserver = new MutationObserver(queueReattach);
     bodyObserver.observe(document.body, { childList: true, subtree: true });
+    // Test-only: let the offline harness fully reset state between cases.
+    if (window.__xnsTest === true) {
+      window.__xnsReset = function () {
+        anchor = null; armedUntil = 0; defendUntil = 0;
+        selfScrollUntil = 0; xScrollUntil = 0;
+        lastScrollHeight = scrollEl().scrollHeight;
+      };
+    }
   }
 
   function isXHome() {

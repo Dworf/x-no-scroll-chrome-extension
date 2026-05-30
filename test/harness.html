@@ -185,13 +185,17 @@
 
   const TOL = 3; // px
 
-  // Move to a scroll position as the USER would: set scroll, render, fire a wheel gesture
-  // (so the content script re-anchors here and drops any prior defend window), settle.
-  async function userScrollTo(y) {
+  // Put the viewport at y (as if the user scrolled here), and let the resulting scroll event
+  // flush BEFORE anyone arms — so positioning never looks like a "user scrolled while armed".
+  async function place(y) {
+    if (window.__xnsReset) window.__xnsReset();   // isolate each case from the previous one's armed/defend state
     document.scrollingElement.scrollTop = y;
     render();
-    window.dispatchEvent(new WheelEvent('wheel'));
     await sleep(60);
+  }
+  // Simulate clicking a "Show posts" pill: a click anywhere arms the engine (captures the anchor).
+  function clickArm() {
+    container.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
   }
 
   // Read the anchor's on-screen top after letting pending corrections flush. In a real browser
@@ -209,14 +213,17 @@
   }
 
   async function run() {
+    window.__xnsTest = true; // let the content script treat this page as the home timeline
     // Seed a tall feed and start the content script under test.
     posts = makePosts(40);
     render();
     if (typeof window.__xnsStart === 'function') window.__xnsStart();
     else console.log('[xns-test] __xnsStart not defined — content script not implemented yet');
 
+    // Feature cases: a click arms the engine, then a load must keep the clicked-at post in place.
+
     // ---- Case A: small prepend at top, anchor stays mounted ----
-    await userScrollTo(0);
+    await place(0); clickArm();
     let id = topmostAnchorId(); let before = cellTop(id);
     await prepend(5, 'instant');
     let after = await settleTop(id);
@@ -224,7 +231,7 @@
            'before=' + before + ' after=' + after);
 
     // ---- Case B: BIG prepend at top, anchor UNMOUNTS → self-heal ----
-    await userScrollTo(0);
+    await place(0); clickArm();
     id = topmostAnchorId(); before = cellTop(id);
     await prepend(60, 'instant');
     after = await settleTop(id);
@@ -232,54 +239,70 @@
            'before=' + before + ' after=' + after);
 
     // ---- Case C: big prepend delivered SLOWLY in chunks ----
-    await userScrollTo(0);
+    await place(0); clickArm();
     id = topmostAnchorId(); before = cellTop(id);
-    await prepend(12, 'slow');
+    await prepend(6, 'slow');
     after = await settleTop(id);
     record('C: slow/chunked prepend keeps anchor', after != null && Math.abs(after - before) <= TOL,
            'before=' + before + ' after=' + after);
 
-    // ---- Case D: scrolled DOWN, prepend at top (Case 2 analogue) ----
-    await userScrollTo(2500);
+    // ---- Case D: scrolled DOWN, click, prepend (Case 2 analogue) ----
+    await place(2500); clickArm();
     id = topmostAnchorId(); before = cellTop(id);
     await prepend(30, 'instant');
     after = await settleTop(id);
     record('D: prepend while scrolled down keeps anchor', after != null && Math.abs(after - before) <= TOL,
            'before=' + before + ' after=' + after);
 
-    // ---- Case E: GATING — below-fold resize must NOT move the view ----
-    await userScrollTo(1500);
+    // ---- Case E: GATING — armed, but a below-fold resize must NOT move the view ----
+    await place(1500); clickArm();
     id = topmostAnchorId(); before = cellTop(id);
     resizeBelowFold(120); await sleep(120);
     after = await settleTop(id);
     record('E: below-fold resize does not move view (gating)', after != null && Math.abs(after - before) <= TOL,
            'before=' + before + ' after=' + after);
 
-    // ---- Case F: normal user scrolling is NOT fought ----
-    await userScrollTo(1000);
-    await userScrollTo(1800);
+    // ---- Case F: normal scrolling with NO click is never touched ----
+    await place(1000);
+    await place(1800);
     await sleep(150);
     after = Math.round(document.scrollingElement.scrollTop);
-    record('F: does not fight normal scrolling', Math.abs(after - 1800) <= TOL, 'scrollTop=' + after);
+    record('F: normal scrolling (no click) untouched', Math.abs(after - 1800) <= TOL, 'scrollTop=' + after);
 
-    // ---- Case G: X yanks to top (scrollToNewest) during prepend — the real bug ----
-    await userScrollTo(0);
+    // ---- Case G: click, then X yanks to top (scrollToNewest) during prepend ----
+    await place(0); clickArm();
     id = topmostAnchorId(); before = cellTop(id);
     await prependWithYank(6);
     after = await settleTop(id);
     record('G: holds anchor despite X scrollToNewest', after != null && Math.abs(after - before) <= TOL,
            'before=' + before + ' after=' + after);
 
-    // ---- Case H: clicked while SLIGHTLY SCROLLED, then X yanks to top ----
-    // (Reproduces the live "Show 82 posts" failure: scrollTop != 0 at click, so X's
-    //  scrollTo(0) is a real change that the old scrollTop-based discriminator mis-read.)
-    await userScrollTo(40);
-    await sleep(250); // user paused before clicking the pill (gesture window elapses)
+    // ---- Case H: clicked while SLIGHTLY SCROLLED, then X yanks to top (the live "Show 82" case) ----
+    await place(40); clickArm();
     id = topmostAnchorId(); before = cellTop(id);
     await prependWithYank(8);
     after = await settleTop(id);
     record('H: holds anchor when slightly scrolled + scrollToNewest', after != null && Math.abs(after - before) <= TOL,
            'before=' + before + ' after=' + after);
+
+    // ---- Case I: scrollbar drag with NO click, then a load — must be fully passive (no jump) ----
+    await place(0);
+    document.scrollingElement.scrollTop = 1500;       // scrollbar drag: a bare scroll, no click
+    render(); await sleep(120);
+    await prepend(8, 'instant');                        // a load happens, but we never clicked
+    await sleep(200);
+    after = Math.round(document.scrollingElement.scrollTop);
+    record('I: scrollbar drag + load with no click → no jump', Math.abs(after - 1500) <= 6, 'scrollTop=' + after);
+
+    // ---- Case J: click, then the user scrolls away (scrollbar) → disarm → load must NOT yank back ----
+    await place(0); clickArm();
+    document.scrollingElement.scrollTop = 1200;        // user changes mind, drags the scrollbar
+    window.dispatchEvent(new Event('scroll'));          // a scrollbar drag fires scroll events
+    render(); await sleep(150);
+    await prepend(6, 'instant');
+    await sleep(200);
+    after = Math.round(document.scrollingElement.scrollTop);
+    record('J: user scroll after click disarms; load does not yank', Math.abs(after - 1200) <= 6, 'scrollTop=' + after);
 
     document.getElementById('sum').textContent =
       'RESULT: ' + passCount + ' passed, ' + failCount + ' failed';

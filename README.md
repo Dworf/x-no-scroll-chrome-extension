@@ -10,8 +10,9 @@ stops that: the post you were looking at stays put, and the new posts appear *ab
 to read them) — whether you're working up the feed or scrolling down through it.
 
 It also covers the inline **"Show more posts"** gap button and other click-triggered loads. It
-matches **no button text** — any click briefly "arms" it, and it only acts if posts actually load —
-so it works in any language and isn't fragile to X's UI changes.
+matches **no button text** — a *button* click briefly "arms" it (navigation **links** like Home are
+ignored, since those are meant to move you), and it only acts if posts actually load — so it works in
+any language and isn't fragile to X's UI changes.
 
 ## Install (load unpacked)
 
@@ -36,8 +37,9 @@ Two things make you lose your place when a pill loads posts (both verified by in
 scroll, or drag the scrollbar, so it can never cause a stray jump. It acts only in a short window
 after a click:
 
-1. **On any click**, it remembers the **anchor** — the topmost in-view post (status id + on-screen
-   offset) — and arms for a few seconds.
+1. **On a button click** (a load pill — *not* a navigation link like Home, which is supposed to move
+   you), it remembers the **anchor** — the topmost in-view post (status id + on-screen offset) — and
+   arms for a few seconds.
 2. **If a load arrives while armed**, a `MutationObserver` restores the anchor to exactly where it
    was (re-pinning across chunked loads), and X's `window.scrollTo` / `window.scrollBy` (its
    scroll-to-newest) are suppressed so X can't undo it. We move via `element.scrollTop` while X moves
@@ -69,6 +71,11 @@ python3 -m http.server 8753
 Home timeline only (`x.com/home`, `twitter.com/home`). Always on; no UI.
 
 ## Versions
+
+### v0.1.1
+- **Fix:** clicking the **Home** tab (or any nav link) no longer drags you back to your previous
+  spot. The engine now ignores clicks on links (`<a>`) and only arms on the load-pill *buttons*, so
+  Home's scroll-to-top works normally.
 
 ### v0.1.0 — first release
 - Keeps your place when X loads new posts above you ("Show N posts" / "See new posts" / inline

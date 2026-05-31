@@ -82,8 +82,11 @@
   }
 
   // A click might be a "Show posts" pill — remember where we are so we can restore after the load.
-  function onClick() {
+  // Ignore clicks on links (`<a>`): the Home tab, the X logo, nav items, and tweets are all anchors
+  // and are SUPPOSED to move you (e.g. Home scrolls to the top). The load-pills are <button>s.
+  function onClick(e) {
     if (!onHome()) return;
+    if (e && e.target && e.target.closest && e.target.closest('a')) return;
     var a = pickAnchor();
     if (a) { anchor = a; armedUntil = nowMs() + ARM_MS; }
   }

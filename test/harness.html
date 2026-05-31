@@ -27,6 +27,8 @@
 </head>
 <body>
   <header class="topbar">Mock X — Home</header>
+  <!-- stand-in for a navigation link (like the Home tab) — clicking it must NOT arm the engine -->
+  <a id="navlink" href="#noop" style="position:absolute;left:-9999px;">nav</a>
 
   <!-- Mirrors X's structure: region[aria-label^=Timeline] > div[min-height] (virtual container) > cellInnerDiv* -->
   <section role="region" aria-label="Timeline: Your Home Timeline">
@@ -197,6 +199,10 @@
   function clickArm() {
     container.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
   }
+  // Simulate clicking a navigation link (like the Home tab) — must NOT arm the engine.
+  function navClick() {
+    document.getElementById('navlink').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+  }
 
   // Read the anchor's on-screen top after letting pending corrections flush. In a real browser
   // the MutationObserver corrects before paint; the harness must not measure a frame too early.
@@ -303,6 +309,14 @@
     await sleep(200);
     after = Math.round(document.scrollingElement.scrollTop);
     record('J: user scroll after click disarms; load does not yank', Math.abs(after - 1200) <= 6, 'scrollTop=' + after);
+
+    // ---- Case K: clicking a NAV LINK (e.g. Home) must NOT arm, so a following load isn't undone ----
+    await place(0);
+    navClick();                         // click a link, like the Home tab — should not arm
+    await prepend(6, 'instant');        // X loads + would scroll to top; we must stay passive
+    await sleep(200);
+    after = Math.round(document.scrollingElement.scrollTop);
+    record('K: nav-link (Home) click does not arm', Math.abs(after - 0) <= 6, 'scrollTop=' + after);
 
     document.getElementById('sum').textContent =
       'RESULT: ' + passCount + ' passed, ' + failCount + ' failed';

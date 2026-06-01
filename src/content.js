@@ -52,6 +52,7 @@
   var bodyObserver = null;
   var reattachQueued = false;
   var started = false;
+  var repinTimer = null;
 
   function isArmed() { return nowMs() < armedUntil; }
   function inDefend() { return nowMs() < defendUntil; }
@@ -81,14 +82,19 @@
     return null;
   }
 
-  // A click might be a "Show posts" pill — remember where we are so we can restore after the load.
-  // Ignore clicks on links (`<a>`): the Home tab, the X logo, nav items, and tweets are all anchors
-  // and are SUPPOSED to move you (e.g. Home scrolls to the top). The load-pills are <button>s.
+  // Arm ONLY when a "load more posts" pill is clicked, identified by its LABEL — so it works whether
+  // X renders the pill as a <button> or an <a> (X A/B-tests this). Everything else (Home, nav, the X
+  // logo, a tweet, Like/Repost, ...) never matches, so it's never armed and your scroll is never
+  // touched. Labels are English; add locales here as needed.
+  var PILL_RE = /^(show\s+([\d,]+|more)\s+posts?|see\s+new\s+posts?)$/i;
   function onClick(e) {
     if (!onHome()) return;
-    if (e && e.target && e.target.closest && e.target.closest('a')) return;
+    var t = e && e.target;
+    if (!t || !t.closest) return;
+    var el = t.closest('[role="button"], button, a');
+    if (!el || !PILL_RE.test((el.textContent || '').trim())) return;
     var a = pickAnchor();
-    if (a) { anchor = a; armedUntil = nowMs() + ARM_MS; }
+    if (a) { anchor = a; armedUntil = nowMs() + ARM_MS; ensureRepin(); }
   }
 
   // If you scroll yourself while armed-and-waiting (scrollbar / wheel / keys), you've moved on —
@@ -121,17 +127,27 @@
 
     if (!anchor || !onHome() || (!isArmed() && !inDefend())) return;
 
-    if (growth > 0 || inDefend()) {
-      var cell = findCellById(anchor.id);
-      if (cell) {
-        var delta = cell.getBoundingClientRect().top - anchor.savedTop;
-        if (Math.abs(delta) > 0.5) applyScrollTo(se.scrollTop + delta);
-      } else if (growth > 0) {
-        // Anchor virtualized away by a large prepend. Absolute restore (correct even after X
-        // has already scrolled the page away).
-        applyScrollTo(anchor.baseScrollTop + (sh - anchor.baseScrollHeight));
-      }
+    // Re-pin the anchor. Runs on cell add/remove (cellObserver) AND on a short timer while armed,
+    // so late media that grows a post above you in place (no add/remove) is caught too.
+    var cell = findCellById(anchor.id);
+    if (cell) {
+      var delta = cell.getBoundingClientRect().top - anchor.savedTop;
+      if (Math.abs(delta) > 0.5) applyScrollTo(se.scrollTop + delta);
+    } else if (growth > 0) {
+      // Anchor virtualized away by a large prepend. Absolute restore (correct even after X
+      // has already scrolled the page away).
+      applyScrollTo(anchor.baseScrollTop + (sh - anchor.baseScrollHeight));
     }
+  }
+
+  // While armed, re-pin on a timer (not just on DOM add/remove) so in-place media height growth
+  // above the anchor is corrected. Self-stops when no longer armed/defending.
+  function ensureRepin() {
+    if (repinTimer) return;
+    repinTimer = setInterval(function () {
+      if (!isArmed() && !inDefend()) { clearInterval(repinTimer); repinTimer = null; return; }
+      compensate();
+    }, 120);
   }
 
   function attach(c) {
@@ -177,6 +193,7 @@
         anchor = null; armedUntil = 0; defendUntil = 0;
         selfScrollUntil = 0; xScrollUntil = 0;
         lastScrollHeight = scrollEl().scrollHeight;
+        if (repinTimer) { clearInterval(repinTimer); repinTimer = null; }
       };
     }
   }

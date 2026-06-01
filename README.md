@@ -9,10 +9,10 @@ When you click that pill, X loads the new posts **and scrolls you up to the newe
 stops that: the post you were looking at stays put, and the new posts appear *above* it (scroll up
 to read them) — whether you're working up the feed or scrolling down through it.
 
-It also covers the inline **"Show more posts"** gap button and other click-triggered loads. It
-matches **no button text** — a *button* click briefly "arms" it (navigation **links** like Home are
-ignored, since those are meant to move you), and it only acts if posts actually load — so it works in
-any language and isn't fragile to X's UI changes.
+It also covers the inline **"Show more posts"** gap button. It recognizes the load pills by their
+**label** ("Show N posts" / "Show more posts" / "See new posts"), so it arms **only** on those —
+never on Home, other nav, tweets, or buttons like Like. (Labels are currently English; other locales
+can be added in `src/content.js`.)
 
 ## Install (load unpacked)
 
@@ -37,9 +37,10 @@ Two things make you lose your place when a pill loads posts (both verified by in
 scroll, or drag the scrollbar, so it can never cause a stray jump. It acts only in a short window
 after a click:
 
-1. **On a button click** (a load pill — *not* a navigation link like Home, which is supposed to move
-   you), it remembers the **anchor** — the topmost in-view post (status id + on-screen offset) — and
-   arms for a few seconds.
+1. **When you click a recognized load pill** ("Show N posts" / "Show more posts" / "See new posts",
+   matched by its **label** — so it works whether X renders the pill as a `<button>` or an `<a>`), it
+   remembers the **anchor** — the topmost in-view post (status id + on-screen offset) — and arms for a
+   few seconds. Home, nav, tweets, and other buttons never match, so they're never touched.
 2. **If a load arrives while armed**, a `MutationObserver` restores the anchor to exactly where it
    was (re-pinning across chunked loads), and X's `window.scrollTo` / `window.scrollBy` (its
    scroll-to-newest) are suppressed so X can't undo it. We move via `element.scrollTop` while X moves
@@ -71,6 +72,16 @@ python3 -m http.server 8753
 Home timeline only (`x.com/home`, `twitter.com/home`). Always on; no UI.
 
 ## Versions
+
+### v0.1.2
+- **Fix:** arms **only** on the load pills, matched by label ("Show N posts" / "Show more posts" /
+  "See new posts"), instead of on any non-link click. This is more precise — Home, nav, tweets, and
+  other buttons are never touched — and it works whether X renders a pill as a `<button>` or an
+  `<a>` (it A/B-tests this).
+- **Fix:** hold your post even when a newly-loaded post above it grows *after* loading (a late image
+  or embed). Previously we only reacted to posts being added/removed, so in-place height growth could
+  let small loads drift your post down (e.g. "Show 1 post" with a media tweet). We now re-pin on a
+  short timer while armed, catching that.
 
 ### v0.1.1
 - **Fix:** clicking the **Home** tab (or any nav link) no longer drags you back to your previous

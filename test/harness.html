@@ -29,6 +29,10 @@
   <header class="topbar">Mock X — Home</header>
   <!-- stand-in for a navigation link (like the Home tab) — clicking it must NOT arm the engine -->
   <a id="navlink" href="#noop" style="position:absolute;left:-9999px;">nav</a>
+  <!-- stand-in for a "Show N posts" pill button — clicking it SHOULD arm the engine -->
+  <button id="pill" style="position:absolute;left:-9999px;">Show 5 posts</button>
+  <!-- a non-pill button (like "Like") — clicking it must NOT arm -->
+  <button id="likebtn" style="position:absolute;left:-9999px;">Like</button>
 
   <!-- Mirrors X's structure: region[aria-label^=Timeline] > div[min-height] (virtual container) > cellInnerDiv* -->
   <section role="region" aria-label="Timeline: Your Home Timeline">
@@ -143,6 +147,20 @@
     return null;
   }
 
+  // Reposition/resize the currently-mounted cells in place — NO add/remove (no childList mutation).
+  // This is how a post growing in place (late media load) actually looks to the page.
+  function reflowNoChildList() {
+    const { off, total } = offsets();
+    container.style.minHeight = total + 'px';
+    for (const cell of Array.from(container.children)) {
+      const i = posts.findIndex(p => p.id === cell.dataset.pid);
+      if (i < 0) continue;
+      cell.style.transform = 'translateY(' + off[i] + 'px)';
+      const fill = cell.querySelector('.article-fill');
+      if (fill) fill.style.height = (posts[i].h - 1) + 'px';
+    }
+  }
+
   // Mimic X's real behavior: clicking a "Show N posts" pill makes X call
   // scrollToNewest() -> window.scrollTo(0) + window.scrollBy(...), yanking you to the top.
   // (Discovered live: this — not content insertion — is what moves your view.)
@@ -195,13 +213,17 @@
     render();
     await sleep(60);
   }
-  // Simulate clicking a "Show posts" pill: a click anywhere arms the engine (captures the anchor).
+  // Simulate clicking a "Show N posts" pill (matched by label) — this arms the engine.
   function clickArm() {
-    container.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    document.getElementById('pill').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
   }
   // Simulate clicking a navigation link (like the Home tab) — must NOT arm the engine.
   function navClick() {
     document.getElementById('navlink').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+  }
+  // Simulate clicking a non-pill button (like "Like") — must NOT arm the engine.
+  function nonPillClick() {
+    document.getElementById('likebtn').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
   }
 
   // Read the anchor's on-screen top after letting pending corrections flush. In a real browser
@@ -310,13 +332,31 @@
     after = Math.round(document.scrollingElement.scrollTop);
     record('J: user scroll after click disarms; load does not yank', Math.abs(after - 1200) <= 6, 'scrollTop=' + after);
 
-    // ---- Case K: clicking a NAV LINK (e.g. Home) must NOT arm, so a following load isn't undone ----
+    // ---- Case K: clicking a NAV LINK (e.g. Home) must NOT arm — its label isn't a pill ----
     await place(0);
     navClick();                         // click a link, like the Home tab — should not arm
     await prepend(6, 'instant');        // X loads + would scroll to top; we must stay passive
     await sleep(200);
     after = Math.round(document.scrollingElement.scrollTop);
     record('K: nav-link (Home) click does not arm', Math.abs(after - 0) <= 6, 'scrollTop=' + after);
+
+    // ---- Case L: clicking a non-pill button (e.g. Like) must NOT arm ----
+    await place(0);
+    nonPillClick();
+    await prepend(6, 'instant');
+    await sleep(200);
+    after = Math.round(document.scrollingElement.scrollTop);
+    record('L: non-pill button (Like) click does not arm', Math.abs(after - 0) <= 6, 'scrollTop=' + after);
+
+    // ---- Case M: a post above the anchor grows in place (late media), NO add/remove — re-pinned ----
+    await place(0); clickArm();
+    id = topmostAnchorId(); before = cellTop(id);
+    await prepend(3, 'instant');                 // 3 new posts above; anchor corrected to its spot
+    posts[1].h += 220; reflowNoChildList();      // a new post loads tall media in place (no childList event)
+    await sleep(1300);                           // let the re-pin timer catch it (120ms; ~1s if throttled)
+    after = cellTop(id);                         // NOT settleTop() — no render(), so only the timer can fix it
+    record('M: in-place media growth above anchor is re-pinned', after != null && Math.abs(after - before) <= TOL,
+           'before=' + before + ' after=' + after);
 
     document.getElementById('sum').textContent =
       'RESULT: ' + passCount + ' passed, ' + failCount + ' failed';

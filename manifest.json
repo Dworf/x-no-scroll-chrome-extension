@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "X No-Scroll — keep your place",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Keeps your scroll position fixed when X (Twitter) loads new posts above you (\"Show N posts\" / \"Show more posts\").",
   "icons": {
     "16": "icons/icon16.png",

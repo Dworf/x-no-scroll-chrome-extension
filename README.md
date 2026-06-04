@@ -73,6 +73,12 @@ Home timeline only (`x.com/home`, `twitter.com/home`). Always on; no UI.
 
 ## Versions
 
+### v0.1.3
+- **Fix:** keep the post you're *reading* fixed when a mid-view "Show more posts" (the chained one
+  after "Show N posts") fills the gap with newer posts. Previously the engine could anchor to a post
+  that was mostly scrolled off the top, so the newer posts loading in below it pushed your reading
+  content down. It now anchors to the topmost post that actually starts inside your view.
+
 ### v0.1.2
 - **Fix:** arms **only** on the load pills, matched by label ("Show N posts" / "Show more posts" /
   "See new posts"), instead of on any non-link click. This is more precise — Home, nav, tweets, and

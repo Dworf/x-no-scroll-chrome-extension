@@ -161,6 +161,14 @@
     }
   }
 
+  // Insert n posts at a given index (a mid-feed gap fill, like the chained "Show more posts"),
+  // pushing everything from that index downward.
+  function insertAtGap(index, n) {
+    const fresh = makePosts(n);
+    posts.splice(index, 0, ...fresh);
+    render();
+  }
+
   // Mimic X's real behavior: clicking a "Show N posts" pill makes X call
   // scrollToNewest() -> window.scrollTo(0) + window.scrollBy(...), yanking you to the top.
   // (Discovered live: this — not content insertion — is what moves your view.)
@@ -356,6 +364,26 @@
     await sleep(1300);                           // let the re-pin timer catch it (120ms; ~1s if throttled)
     after = cellTop(id);                         // NOT settleTop() — no render(), so only the timer can fix it
     record('M: in-place media growth above anchor is re-pinned', after != null && Math.abs(after - before) <= TOL,
+           'before=' + before + ' after=' + after);
+
+    // ---- Case N: chained "Show more posts" mid-view — keep the post you're READING, ----
+    // not a sliver scrolled off the top. (The live bug: anchored to a partial post 299px above the
+    // viewport, so the reading content below the gap got shoved down.)
+    await place(0);
+    { const { off } = offsets(); const k = 10;
+      document.scrollingElement.scrollTop = Math.round(off[k] + posts[k].h * 0.6); } // post k straddles the top
+    render(); window.dispatchEvent(new Event('scroll')); await sleep(80);
+    // reading post = the topmost cell that actually starts inside the readable area
+    let readId = null, rmin = Infinity;
+    for (const c of container.querySelectorAll('[data-testid="cellInnerDiv"]')) {
+      const r = c.getBoundingClientRect();
+      if (r.top >= 56 && r.top < rmin) { rmin = r.top; readId = c.dataset.pid; }
+    }
+    clickArm();
+    before = cellTop(readId);
+    insertAtGap(posts.findIndex(p => p.id === readId), 8); // 8 newer posts fill the gap ABOVE the reading post
+    after = await settleTop(readId);
+    record('N: mid-view gap-fill keeps the post you are reading', after != null && Math.abs(after - before) <= TOL,
            'before=' + before + ' after=' + after);
 
     document.getElementById('sum').textContent =

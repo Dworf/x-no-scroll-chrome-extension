@@ -59,19 +59,24 @@
 
   function pickAnchor() {
     var cells = document.querySelectorAll(CELL);
-    var best = null, bestTop = Infinity;
     var se = scrollEl();
+    // Prefer the topmost tweet that actually STARTS inside the readable area (top at/below the
+    // header). Anchoring to a sliver that's mostly scrolled off the top would let a mid-view
+    // "Show more posts" gap-fill shove the content you're reading down. Fall back to the topmost
+    // partially-visible tweet only if none start in view.
+    var best = null, bestTop = Infinity;       // topmost tweet with top >= header
+    var fb = null, fbTop = Infinity;           // topmost partially-visible tweet (fallback)
     for (var i = 0; i < cells.length; i++) {
       var c = cells[i];
       var id = statusIdOf(c);
       if (!id) continue; // skip spacers / non-tweet cells
       var r = c.getBoundingClientRect();
-      if (r.bottom > HEADER_OFFSET + 1 && r.top < bestTop) {
-        bestTop = r.top;
-        best = { id: id, savedTop: r.top, baseScrollTop: se.scrollTop, baseScrollHeight: se.scrollHeight };
-      }
+      if (r.bottom <= HEADER_OFFSET + 1) continue; // scrolled fully above the header
+      var rec = { id: id, savedTop: r.top, baseScrollTop: se.scrollTop, baseScrollHeight: se.scrollHeight };
+      if (r.top < fbTop) { fbTop = r.top; fb = rec; }
+      if (r.top >= HEADER_OFFSET && r.top < bestTop) { bestTop = r.top; best = rec; }
     }
-    return best;
+    return best || fb;
   }
 
   function findCellById(id) {

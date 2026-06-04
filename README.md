@@ -121,6 +121,11 @@ step** — the whole engine is `src/content.js` (dependency-free vanilla JS).
 trademarks of X Corp; "Google Chrome" is a trademark of Google LLC. This is an independent,
 unofficial project.
 
+## Privacy
+
+No data is collected, stored, or transmitted — no analytics, no tracking, no network requests. See
+[PRIVACY.md](PRIVACY.md).
+
 ## License
 
 MIT — see [LICENSE](LICENSE).

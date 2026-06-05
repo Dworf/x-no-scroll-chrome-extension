@@ -73,6 +73,13 @@ Home timeline only (`x.com/home`, `twitter.com/home`). Always on; no UI.
 
 ## Versions
 
+### v0.1.4
+- **Fix:** activate when you reach the home timeline via **in-app navigation**, not only on a full
+  page load. Previously the extension only switched on if a tab was *loaded* directly on `/home`;
+  navigating to Home from elsewhere in X (the single-page app just changes the URL, no reload) left
+  it off until you reloaded. It now starts on any X page and gates its work to the home timeline at
+  runtime.
+
 ### v0.1.3
 - **Fix:** keep the post you're *reading* fixed when a mid-view "Show more posts" (the chained one
   after "Show N posts") fills the gap with newer posts. Previously the engine could anchor to a post

@@ -203,15 +203,18 @@
     }
   }
 
-  function isXHome() {
+  // True on any X/Twitter page (not just /home). We auto-start here so the extension also activates
+  // when you reach the home timeline via in-app SPA navigation (no full page load) — start() sets up
+  // listeners + a body observer, and the actual work stays gated to /home at runtime by onHome().
+  // (Excludes the offline harness, which runs on localhost and drives start() itself.)
+  function onXDomain() {
     var h = location.hostname;
-    var onX = h === 'x.com' || h === 'twitter.com' ||
-              h === 'mobile.x.com' || h === 'mobile.twitter.com';
-    return onX && location.pathname === '/home';
+    return h === 'x.com' || h === 'twitter.com' ||
+           h === 'mobile.x.com' || h === 'mobile.twitter.com';
   }
 
   // Exposed so the offline harness can drive the engine on a non-X page.
   window.__xnsStart = start;
 
-  if (isXHome()) start();
+  if (onXDomain()) start();
 })();

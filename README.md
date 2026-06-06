@@ -14,7 +14,11 @@ It also covers the inline **"Show more posts"** gap button. It recognizes the lo
 never on Home, other nav, tweets, or buttons like Like. (Labels are currently English; other locales
 can be added in `src/content.js`.)
 
-## Install (load unpacked)
+## Install
+
+The easiest way is from the **[Chrome Web Store](https://chromewebstore.google.com/detail/x-no-scroll-%E2%80%94-keep-your-p/empnceeflhpfecgnhcigcbeopnigcamo)** — click **Add to Chrome** and you're done.
+
+### Or load unpacked (from source)
 
 1. Open `chrome://extensions`.
 2. Turn on **Developer mode** (top right).

@@ -14,6 +14,14 @@ It also covers the inline **"Show more posts"** gap button. It recognizes the lo
 never on Home, other nav, tweets, or buttons like Like. (Labels are currently English; other locales
 can be added in `src/content.js`.)
 
+## Screenshots
+
+| The pill appears | Your place is held |
+| --- | --- |
+| ![A "Show 3 posts" pill at the top of the home timeline, with the post you're reading below it](docs/screenshots/show-posts-pill.jpg) | ![After the posts load, the same post stays exactly where it was — no jump to the top](docs/screenshots/place-held.jpg) |
+
+When you click **"Show 3 posts"**, the new posts load *above* and the post you were reading stays put — X's jump-to-top is suppressed (the ↑↓ with the red ✗).
+
 ## Install
 
 The easiest way is from the **[Chrome Web Store](https://chromewebstore.google.com/detail/x-no-scroll-%E2%80%94-keep-your-p/empnceeflhpfecgnhcigcbeopnigcamo)** — click **Add to Chrome** and you're done.

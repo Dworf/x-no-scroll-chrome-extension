@@ -234,6 +234,52 @@
     document.getElementById('likebtn').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
   }
 
+  // ---- Mock of X's floating "See new posts" pill (for the dismiss-× feature) ----
+  // Mirrors live X: a position:sticky wrapper > div[role="status"] > the pill <button>. A delegated
+  // click handler on the wrapper stands in for X's load/scroll-to-newest — dismissing via the × must
+  // NOT reach it.
+  function mountPill(label) {
+    unmountPill();
+    const wrap = document.createElement('div');
+    wrap.id = 'floatwrap';
+    wrap.style.cssText = 'position:sticky; top:53px;';
+    const status = document.createElement('div');
+    status.id = 'floatstatus';
+    status.setAttribute('role', 'status');
+    status.style.cssText = 'position:relative; display:inline-block;';
+    const btn = document.createElement('button');
+    btn.id = 'newpostspill';
+    btn.textContent = label || 'See new posts';
+    btn.style.cssText = 'background:#1d9bf0;color:#fff;border:0;border-radius:9999px;padding:6px 14px;';
+    status.appendChild(btn);
+    wrap.appendChild(status);
+    wrap.addEventListener('click', () => { window.__pillDelegated = true; }); // X's delegated load
+    document.body.insertBefore(wrap, document.body.firstChild);
+    window.__pillDelegated = false;
+  }
+  function unmountPill() {
+    const w = document.getElementById('floatwrap');
+    if (w) w.remove();
+    window.__pillDelegated = false;
+  }
+  function pillXel() {
+    const s = document.getElementById('floatstatus');
+    return s ? s.querySelector('[data-xns-x]') : null;
+  }
+  function pillHidden() {
+    const w = document.getElementById('floatwrap');
+    return !!w && getComputedStyle(w).display === 'none';
+  }
+  async function waitForX() {
+    for (let i = 0; i < 25; i++) { await sleep(20); if (pillXel()) return true; }
+    return false;
+  }
+  // Drive the settings channel exactly like bridge.js does (attribute on <html> + notify event).
+  function setSetting(on) {
+    document.documentElement.setAttribute('data-xns-dismiss-x', on ? '1' : '0');
+    document.dispatchEvent(new Event('xns:settings'));
+  }
+
   // Read the anchor's on-screen top after letting pending corrections flush. In a real browser
   // the MutationObserver corrects before paint; the harness must not measure a frame too early.
   async function settleTop(id) {
@@ -385,6 +431,44 @@
     after = await settleTop(readId);
     record('N: mid-view gap-fill keeps the post you are reading', after != null && Math.abs(after - before) <= TOL,
            'before=' + before + ' after=' + after);
+
+    // ---- Dismiss-× feature ----------------------------------------------------
+
+    // ---- Case O: with the feature ON (default), the floating pill gets a dismiss × ----
+    setSetting(true);
+    mountPill('See new posts');
+    let oOk = await waitForX();
+    record('O: × injected on the floating "See new posts" pill', oOk, oOk ? '' : 'no × appeared');
+
+    // ---- Case P: clicking × dismisses the pill WITHOUT triggering X's (delegated) load ----
+    window.__pillDelegated = false;
+    let xbtn = pillXel();
+    if (xbtn) xbtn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    await sleep(60);
+    record('P: × hides the pill and does not trigger load',
+           !!xbtn && pillHidden() && window.__pillDelegated === false,
+           'hidden=' + pillHidden() + ' delegatedLoad=' + window.__pillDelegated);
+
+    // ---- Case Q: with the feature OFF, no × is added (and any existing one is removed) ----
+    setSetting(false);
+    await sleep(40);
+    mountPill('Show 7 posts');         // a fresh pill appears while the option is off
+    await sleep(120);
+    record('Q: feature off → no × added', !pillXel(), pillXel() ? 'an × was present' : '');
+
+    // ---- Case R: after dismiss, a NEW batch (label changes) brings the pill back, re-decorated ----
+    setSetting(true);
+    mountPill('Show 3 posts');
+    await waitForX();
+    pillXel().dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })); // dismiss
+    await sleep(60);
+    const wasHidden = pillHidden();
+    document.getElementById('newpostspill').textContent = 'Show 9 posts';   // X updates the count
+    await sleep(120);
+    record('R: new batch (label change) restores the pill with its ×',
+           wasHidden && !pillHidden() && !!pillXel(),
+           'wasHidden=' + wasHidden + ' nowHidden=' + pillHidden() + ' hasX=' + !!pillXel());
+    unmountPill();
 
     document.getElementById('sum').textContent =
       'RESULT: ' + passCount + ' passed, ' + failCount + ' failed';

@@ -1,15 +1,20 @@
 # Privacy Policy — X No-Scroll
 
-_Last updated: 2026-06-04_
+_Last updated: 2026-06-11_
 
 **X No-Scroll** ("the extension") keeps your scroll position fixed on the X (formerly Twitter) home
 timeline when new posts load.
 
 ## Data collection
 
-The extension **does not collect, store, transmit, sell, or share any data** — personal or otherwise.
-It contains no analytics, no tracking, no accounts, no remote servers, and makes no network requests
-of its own.
+The extension **does not collect, transmit, sell, or share any personal or browsing data**. It
+contains no analytics, no tracking, no accounts, no remote servers, and makes no network requests of
+its own.
+
+The **only** thing it stores is a single on/off preference — whether to show the ✕ that dismisses
+X's "See new posts" pill. This is saved with Chrome's `storage` API (Chrome may sync it to your own
+Google account if you have Chrome Sync enabled). It is just your setting; it is never sent to us or
+any third party.
 
 ## How it works
 
@@ -20,9 +25,9 @@ history, or any other information.
 
 ## Permissions
 
-The extension requests **no special Chrome permissions** and **no host permissions** beyond running
-its single content script on `x.com` / `twitter.com` (home timeline only). It has no background
-service worker and no popup.
+The extension requests only the **`storage`** permission (to remember the one on/off preference
+above) and **no host permissions** beyond running its content scripts on `x.com` / `twitter.com`
+(home timeline only). It has no background service worker and no popup.
 
 ## Changes
 

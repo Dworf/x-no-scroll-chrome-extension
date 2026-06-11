@@ -22,6 +22,19 @@ can be added in `src/content.js`.)
 
 When you click **"Show 3 posts"**, the new posts load *above* and the post you were reading stays put — X's jump-to-top is suppressed (the ↑↓ with the red ✗).
 
+## Dismiss the "See new posts" pill (optional)
+
+X floats a **"See new posts"** pill at the top of the timeline. This extension adds a small **✕** to
+its corner so you can close it **without** loading the posts — no jump, nothing loaded. Clicking the
+pill itself is unchanged (it still loads the posts and holds your place, as above).
+
+![X's "See new posts" pill with the added ✕ — close it without loading new posts](docs/screenshots/dismiss-in-action.jpg)
+
+The ✕ is **on by default**. You can toggle it from the extension's **Options** page (right-click the
+extension icon → *Options*):
+
+<img src="pill-example.png" alt="The 'See new posts' pill showing the dismiss ✕ in its top-right corner" width="260">
+
 ## Install
 
 The easiest way is from the **[Chrome Web Store](https://chromewebstore.google.com/detail/x-no-scroll-%E2%80%94-keep-your-p/empnceeflhpfecgnhcigcbeopnigcamo)** — click **Add to Chrome** and you're done.
@@ -81,9 +94,16 @@ python3 -m http.server 8753
 
 ## Scope
 
-Home timeline only (`x.com/home`, `twitter.com/home`). Always on; no UI.
+Home timeline only (`x.com/home`, `twitter.com/home`). Always on; the only UI is a single Options
+toggle (the dismiss ✕, on by default).
 
 ## Versions
+
+### v0.1.5
+- **New:** a one-click **✕** on X's floating **"See new posts"** pill, so you can dismiss it without
+  loading the posts (clicking the pill itself is unchanged). On by default; toggle it from the new
+  **Options** page. Adds the `storage` permission for that one setting — still no browsing data, no
+  analytics, no network requests.
 
 ### v0.1.4
 - **Fix:** activate when you reach the home timeline via **in-app navigation**, not only on a full
@@ -148,8 +168,9 @@ unofficial project.
 
 ## Privacy
 
-No data is collected, stored, or transmitted — no analytics, no tracking, no network requests. See
-[PRIVACY.md](PRIVACY.md).
+No browsing or personal data is collected — no analytics, no tracking, no network requests. The only
+thing stored is your single on/off preference for the dismiss ✕, kept by Chrome's `storage` (synced
+to your own account only if you use Chrome Sync). See [PRIVACY.md](PRIVACY.md).
 
 ## License
 

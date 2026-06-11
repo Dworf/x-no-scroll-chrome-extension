@@ -182,16 +182,133 @@
     window.scrollBy = function () { if (inDefend()) return; xScrollUntil = nowMs() + 150; return natScrollBy.apply(window, arguments); };
   }
 
+  // ---- dismiss-X on the floating "See new posts" pill (optional feature, default ON) ----
+  // Purely additive UI: while on /home, put a small "×" on the top-right of X's floating
+  // "See new posts" / "Show N posts" pill so you can close it WITHOUT loading the posts. Clicking
+  // the pill itself is untouched (still loads + holds your place via the anchoring above).
+  //
+  // The setting lives in chrome.storage, which the MAIN world can't read — bridge.js (isolated
+  // world) mirrors it onto <html data-xns-dismiss-x="1|0"> and fires "xns:settings". Default ON:
+  // only an explicit "0" turns it off.
+  var DISMISS_ATTR = 'data-xns-dismiss-x';
+  var XBTN_FLAG = 'data-xns-x';              // marks the × we injected
+  var DISMISSED_ATTR = 'data-xns-dismissed'; // marks (and remembers the label of) a pill we hid
+  // Floating top pill only — NOT the inline "Show more posts" gap button (that lives in a cell).
+  var FLOAT_PILL_RE = /^(see\s+new\s+posts?|show\s+[\d,]+\s+posts?)$/i;
+  var showDismissX = true;
+  var decorateQueued = false;
+
+  function readSetting() {
+    showDismissX = document.documentElement.getAttribute(DISMISS_ATTR) !== '0';
+  }
+
+  function findFloatingPill() {
+    var btns = document.querySelectorAll('[role="button"], button');
+    for (var i = 0; i < btns.length; i++) {
+      var b = btns[i];
+      if (!FLOAT_PILL_RE.test((b.textContent || '').trim())) continue;
+      // The floating "new posts" pill is an ARIA live region: its button sits directly inside a
+      // div[role="status"]. That uniquely identifies it (not the inline "Show more posts" gap
+      // button, which lives in a feed cell). It's also where we hang the ×.
+      var wrap = b.parentElement;
+      if (!wrap || wrap.getAttribute('role') !== 'status') continue;
+      return b;
+    }
+    return null;
+  }
+
+  function stickyOf(el) {
+    for (var d = 0; d < 10 && el; d++) {
+      if (getComputedStyle(el).position === 'sticky') return el;
+      el = el.parentElement;
+    }
+    return null;
+  }
+
+  function dismissPill(pill) {
+    var box = stickyOf(pill) || pill.parentElement; // floating container; cleanly removes the pill
+    if (!box) return;
+    box.setAttribute(DISMISSED_ATTR, (pill.textContent || '').trim());
+    box.style.display = 'none';
+  }
+
+  function makeXButton(pill) {
+    var x = document.createElement('button');
+    x.type = 'button';
+    x.setAttribute(XBTN_FLAG, '1');
+    x.setAttribute('aria-label', 'Dismiss new posts');
+    x.title = 'Dismiss';
+    x.textContent = '×';
+    var s = x.style;
+    s.position = 'absolute'; s.top = '-7px'; s.right = '-7px';
+    s.width = '18px'; s.height = '18px'; s.padding = '0';
+    s.display = 'flex'; s.alignItems = 'center'; s.justifyContent = 'center';
+    s.fontSize = '13px'; s.fontWeight = '700'; s.lineHeight = '16px';
+    s.color = '#0f1419'; s.background = '#fff';
+    s.border = '1px solid rgba(0,0,0,0.15)'; s.borderRadius = '9999px';
+    s.boxShadow = '0 1px 3px rgba(0,0,0,0.25)'; s.cursor = 'pointer'; s.zIndex = '2';
+    // Block the pill's own (delegated) press/click handlers so dismissing never loads posts or arms
+    // the anchoring. The × is a sibling of the pill button, and capture-phase stopPropagation keeps
+    // the event from reaching X's root-level click delegation. (No preventDefault on press events —
+    // that can swallow the synthesized click on touch.)
+    function stopOnly(e) { e.stopPropagation(); }
+    x.addEventListener('pointerdown', stopOnly, true);
+    x.addEventListener('mousedown', stopOnly, true);
+    x.addEventListener('touchstart', stopOnly, true);
+    x.addEventListener('click', function (e) {
+      e.preventDefault(); e.stopPropagation();
+      dismissPill(pill);
+    }, true);
+    return x;
+  }
+
+  // Remove everything we added/hid (feature turned off, or test reset) — leaves X's native pill be.
+  function unmanage() {
+    var xs = document.querySelectorAll('[' + XBTN_FLAG + ']');
+    for (var i = 0; i < xs.length; i++) { if (xs[i].parentNode) xs[i].parentNode.removeChild(xs[i]); }
+    var hidden = document.querySelectorAll('[' + DISMISSED_ATTR + ']');
+    for (var j = 0; j < hidden.length; j++) { hidden[j].style.display = ''; hidden[j].removeAttribute(DISMISSED_ATTR); }
+  }
+
+  function decoratePill() {
+    if (!onHome()) return;
+    if (!showDismissX) { unmanage(); return; }
+    var pill = findFloatingPill();
+    if (!pill) return;
+    var wrap = pill.parentElement;     // div[role="status"] — where we hang the ×
+    var box = stickyOf(pill) || wrap;  // what we hide on dismiss
+    if (!wrap || !box) return;
+    var dismissed = box.getAttribute(DISMISSED_ATTR);
+    if (dismissed !== null) {
+      if (dismissed === (pill.textContent || '').trim()) return; // same pill -> stay dismissed
+      box.removeAttribute(DISMISSED_ATTR);                       // new batch (label changed) -> bring back
+      box.style.display = '';
+    }
+    if (wrap.querySelector('[' + XBTN_FLAG + ']')) return; // already decorated
+    wrap.appendChild(makeXButton(pill));
+  }
+
+  function queueDecorate() {
+    if (decorateQueued) return;
+    decorateQueued = true;
+    setTimeout(function () { decorateQueued = false; decoratePill(); }, 0);
+  }
+
   function start() {
     if (started) return;
     started = true;
     installScrollGuards();
     document.addEventListener('click', onClick, true);
     window.addEventListener('scroll', onScroll, { passive: true });
+    // Settings from the isolated-world bridge (default ON); re-decorate on live toggle.
+    readSetting();
+    document.addEventListener('xns:settings', function () { readSetting(); decoratePill(); });
+    document.dispatchEvent(new Event('xns:request-settings')); // in case the bridge pushed before us
     ensureAttached();
     if (bodyObserver) bodyObserver.disconnect();
-    bodyObserver = new MutationObserver(queueReattach);
+    bodyObserver = new MutationObserver(function () { queueReattach(); queueDecorate(); });
     bodyObserver.observe(document.body, { childList: true, subtree: true });
+    decoratePill(); // a pill may already be on screen
     // Test-only: let the offline harness fully reset state between cases.
     if (window.__xnsTest === true) {
       window.__xnsReset = function () {
@@ -199,6 +316,7 @@
         selfScrollUntil = 0; xScrollUntil = 0;
         lastScrollHeight = scrollEl().scrollHeight;
         if (repinTimer) { clearInterval(repinTimer); repinTimer = null; }
+        unmanage();
       };
     }
   }

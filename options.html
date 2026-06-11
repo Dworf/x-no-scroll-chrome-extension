@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>X No-Scroll — Options</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body {
+      font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      margin: 0;
+      padding: 20px 22px;
+      min-width: 360px;
+      color: #0f1419;
+      background: #fff;
+    }
+    @media (prefers-color-scheme: dark) {
+      body { color: #e7e9ea; background: #15202b; }
+      .hint { color: #8b98a5; }
+    }
+    h1 { font-size: 16px; margin: 0 0 14px; }
+    .row { display: flex; align-items: flex-start; gap: 10px; }
+    .row input { margin-top: 2px; width: 16px; height: 16px; accent-color: #1d9bf0; }
+    .label { font-weight: 600; }
+    .hint { color: #536471; margin: 4px 0 0; }
+    .pill-shot { display: block; margin: 12px 0 0 26px; max-width: 260px; width: 100%; height: auto; }
+    .saved { color: #1d9bf0; font-size: 12px; margin-top: 14px; min-height: 16px; opacity: 0; transition: opacity .15s; }
+    .saved.show { opacity: 1; }
+  </style>
+</head>
+<body>
+  <h1>X No-Scroll</h1>
+  <label class="row" for="showDismissX">
+    <input type="checkbox" id="showDismissX" checked>
+    <span>
+      <span class="label">Show an ✕ to dismiss the “See new posts” pill</span>
+      <p class="hint">Adds a small ✕ to the top-right of X’s floating “See new posts” pill so you can
+        close it without loading the new posts. Clicking the pill itself still works as usual.</p>
+    </span>
+  </label>
+  <img class="pill-shot" src="pill-example.png"
+       alt="The “See new posts” pill with the dismiss ✕ in its top-right corner">
+  <div class="saved" id="saved">Saved</div>
+  <script src="options.js"></script>
+</body>
+</html>

@@ -90,8 +90,11 @@
   // Arm ONLY when a "load more posts" pill is clicked, identified by its LABEL — so it works whether
   // X renders the pill as a <button> or an <a> (X A/B-tests this). Everything else (Home, nav, the X
   // logo, a tweet, Like/Repost, ...) never matches, so it's never armed and your scroll is never
-  // touched. Labels are English; add locales here as needed.
-  var PILL_RE = /^(show\s+([\d,]+|more)\s+posts?|see\s+new\s+posts?)$/i;
+  // touched. Labels are English + Japanese, taken from X's own translation strings ("Show {count}
+  // posts" = "{count} 件のポストを表示", "See new posts" = "新しいポストを表示", "Show more posts" =
+  // "ポストをさらに表示"). Matched in full, since a bare "N 件のポスト" is X's profile post count. Add
+  // locales here as needed.
+  var PILL_RE = /^(show\s+([\d,]+|more)\s+posts?|see\s+new\s+posts?|[\d,]+\s*件のポストを表示|新しいポストを表示|ポストをさらに表示)$/i;
   function onClick(e) {
     if (!onHome()) return;
     var t = e && e.target;
@@ -194,7 +197,8 @@
   var XBTN_FLAG = 'data-xns-x';              // marks the × we injected
   var DISMISSED_ATTR = 'data-xns-dismissed'; // marks (and remembers the label of) a pill we hid
   // Floating top pill only — NOT the inline "Show more posts" gap button (that lives in a cell).
-  var FLOAT_PILL_RE = /^(see\s+new\s+posts?|show\s+[\d,]+\s+posts?)$/i;
+  // English + Japanese, same labels as PILL_RE.
+  var FLOAT_PILL_RE = /^(see\s+new\s+posts?|show\s+[\d,]+\s+posts?|新しいポストを表示|[\d,]+\s*件のポストを表示)$/i;
   var showDismissX = true;
   var decorateQueued = false;
 

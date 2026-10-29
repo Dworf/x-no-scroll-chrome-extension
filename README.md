@@ -11,8 +11,9 @@ to read them) — whether you're working up the feed or scrolling down through i
 
 It also covers the inline **"Show more posts"** gap button. It recognizes the load pills by their
 **label** ("Show N posts" / "Show more posts" / "See new posts"), so it arms **only** on those —
-never on Home, other nav, tweets, or buttons like Like. (Labels are currently English; other locales
-can be added in `src/content.js`.)
+never on Home, other nav, tweets, or buttons like Like. Works with X set to **English** or
+**Japanese** (「N 件のポストを表示」 / 「新しいポストを表示」 / 「ポストをさらに表示」); other locales can be
+added in `src/content.js`.
 
 ## Screenshots
 
@@ -98,6 +99,12 @@ Home timeline only (`x.com/home`, `twitter.com/home`). Always on; the only UI is
 toggle (the dismiss ✕, on by default).
 
 ## Versions
+
+### v0.1.6
+- **New:** works when X is set to **Japanese**. The load pills 「N 件のポストを表示」, 「新しいポストを表示」
+  and 「ポストをさらに表示」 now hold your place just like their English versions, and the dismiss ✕
+  appears on the Japanese 「新しいポストを表示」 pill. Labels come from X's own Japanese translations.
+  (Thanks @hiroki-minakawa, #1.)
 
 ### v0.1.5
 - **New:** a one-click **✕** on X's floating **"See new posts"** pill, so you can dismiss it without

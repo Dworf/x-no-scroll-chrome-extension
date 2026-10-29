@@ -225,6 +225,14 @@
   function clickArm() {
     document.getElementById('pill').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
   }
+  // Same, but with the pill showing a given (e.g. localized) label; restores the default after.
+  function clickLabeled(label) {
+    const pill = document.getElementById('pill');
+    const prev = pill.textContent;
+    pill.textContent = label;
+    pill.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    pill.textContent = prev;
+  }
   // Simulate clicking a navigation link (like the Home tab) — must NOT arm the engine.
   function navClick() {
     document.getElementById('navlink').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
@@ -468,6 +476,42 @@
     record('R: new batch (label change) restores the pill with its ×',
            wasHidden && !pillHidden() && !!pillXel(),
            'wasHidden=' + wasHidden + ' nowHidden=' + pillHidden() + ' hasX=' + !!pillXel());
+    unmountPill();
+
+    // ---- Japanese UI labels (X's own ja strings) ------------------------------
+
+    // ---- Case S: ja "Show N posts" arms and holds the anchor despite scrollToNewest ----
+    await place(40); clickLabeled('3 件のポストを表示');
+    id = topmostAnchorId(); before = cellTop(id);
+    await prependWithYank(6);
+    after = await settleTop(id);
+    record('S: ja "3 件のポストを表示" holds anchor', after != null && Math.abs(after - before) <= TOL,
+           'before=' + before + ' after=' + after);
+
+    // ---- Case T: the other ja pill labels arm too (and the count with no space) ----
+    { const bad = [];
+      for (const label of ['新しいポストを表示', 'ポストをさらに表示', '12件のポストを表示']) {
+        await place(40); clickLabeled(label);
+        id = topmostAnchorId(); before = cellTop(id);
+        await prependWithYank(4);
+        after = await settleTop(id);
+        if (after == null || Math.abs(after - before) > TOL) bad.push(label + ' (' + before + '→' + after + ')');
+      }
+      record('T: ja "See new posts" / "Show more posts" / no-space count arm', bad.length === 0, bad.join(', ')); }
+
+    // ---- Case U: ja look-alike "3 件のポスト" (X's profile post count) must NOT arm ----
+    await place(0);
+    clickLabeled('3 件のポスト');
+    await prepend(6, 'instant');
+    await sleep(200);
+    after = Math.round(document.scrollingElement.scrollTop);
+    record('U: ja post-count look-alike does not arm', Math.abs(after - 0) <= 6, 'scrollTop=' + after);
+
+    // ---- Case V: the ja floating pill gets the dismiss × too ----
+    setSetting(true);
+    mountPill('新しいポストを表示');
+    let vOk = await waitForX();
+    record('V: × injected on the ja "新しいポストを表示" pill', vOk, vOk ? '' : 'no × appeared');
     unmountPill();
 
     document.getElementById('sum').textContent =

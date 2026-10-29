@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "X No-Scroll — keep your place",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Keep your place when X (Twitter) loads new posts above you, plus an optional ✕ to dismiss the \"See new posts\" pill.",
   "icons": {
     "16": "icons/icon16.png",
